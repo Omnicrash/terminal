@@ -316,12 +316,18 @@ struct HwndTerminal : public Microsoft::Console::Types::IControlAccessibilityInf
             _interactivity->TouchPressed(PointFromLParam(lParam));
             return 0;
         case WM_POINTERUPDATE:
+        {
             if (!IS_POINTER_INCONTACT_WPARAM(wParam))
             {
                 break;
             }
-            _interactivity->TouchMoved(PointFromLParam(lParam));
+
+            // Pointer messages are in screen coordinates; the terminal position needs client ones.
+            POINT point{ GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
+            ScreenToClient(_hwnd.get(), &point);
+            _interactivity->TouchMoved(PointFromLParam(lParam), getControlKeyState(), { point.x, point.y });
             return 0;
+        }
         case WM_POINTERUP:
             _interactivity->TouchReleased();
             ReleaseCapture();

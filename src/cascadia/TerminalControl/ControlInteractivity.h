@@ -64,7 +64,10 @@ namespace winrt::Microsoft::Terminal::Control::implementation
                           const unsigned int pointerUpdateKind,
                           const ::Microsoft::Terminal::Core::ControlKeyStates modifiers,
                           const Core::Point pixelPosition);
-        void TouchMoved(const Core::Point newTouchPoint);
+        // newTouchPoint is in DIPs, pixelPosition in pixels relative to the terminal origin.
+        void TouchMoved(const Core::Point newTouchPoint,
+                        const ::Microsoft::Terminal::Core::ControlKeyStates modifiers,
+                        const Core::Point pixelPosition);
 
         void PointerReleased(const uint32_t pointerId,
                              Control::MouseButtonState buttonState,
@@ -115,6 +118,9 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         // If this is set, then we assume we are in the middle of panning the
         //      viewport via touch input.
         std::optional<Core::Point> _touchAnchor;
+        // Wheel notches dragged but not yet sent, while a touch drag
+        // goes to a client app as mouse wheel input.
+        float _touchWheelNotches = 0;
 
         using Timestamp = uint64_t;
 
@@ -176,6 +182,9 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         til::point _getTerminalPosition(const til::point pixelPosition, bool roundToNearestCell);
         std::wstring _getHyperLinkForPointerPress(const Control::MouseButtonState buttonState, const ::Microsoft::Terminal::Core::ControlKeyStates modifiers, const til::point terminalPosition) const;
 
+        void _touchWheelToClient(const float rows,
+                                 const bool mouseMode,
+                                 const Core::Point pixelPosition);
         bool _sendMouseEventHelper(const til::point terminalPosition,
                                    const unsigned int pointerUpdateKind,
                                    const ::Microsoft::Terminal::Core::ControlKeyStates modifiers,

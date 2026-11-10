@@ -42,6 +42,8 @@ namespace ControlUnitTests
 
         TEST_METHOD(GetMouseEventsInTest);
         TEST_METHOD(AltBufferClampMouse);
+        TEST_METHOD(TouchScrollInMouseMode);
+        TEST_METHOD(TouchScrollWithAlternateScroll);
 
         TEST_CLASS_SETUP(ClassSetup)
         {
@@ -1069,5 +1071,158 @@ namespace ControlUnitTests
                                       modifiers,
                                       cursorPosition1.to_core_point());
         VERIFY_ARE_EQUAL(0u, expectedOutput.size(), L"Validate we drained all the expected output");
+    }
+
+    void ControlInteractivityTests::TouchScrollInMouseMode()
+    {
+        // GH#19039: dragging a finger over an app in VT mouse mode should
+        // reach it as mouse wheel input, not pan our scrollback.
+        WEX::TestExecution::DisableVerifyExceptions disableVerifyExceptions{};
+
+        auto [settings, conn] = _createSettingsAndConnection();
+        auto [core, interactivity] = _createCoreAndInteractivity(*settings, *conn);
+        _standardInit(core, interactivity);
+        interactivity->GotFocus();
+        interactivity->_rowsToScroll = 3;
+
+        Log::Comment(L"Fill the scrollback, so there is something to pan");
+        for (auto i = 0; i < 40; ++i)
+        {
+            conn->WriteInput(winrt_wstring_to_array_view(L"Foo\r\n"));
+        }
+        VERIFY_ARE_EQUAL(21, core->ScrollOffset());
+
+        std::deque<std::wstring> expectedOutput{};
+        auto validateDrained = _addInputCallback(conn, expectedOutput);
+
+        Log::Comment(L"Enable mouse mode");
+        auto& term{ *core->_terminal };
+        term.Write(L"\x1b[?1000h");
+
+        const auto rowHeight = static_cast<int>(lroundf(core->FontSizeInDips().Height));
+        // A step a bit over three quarters of a row: three of them stay under a notch, four make one.
+        const auto step = (rowHeight * 3 + 3) / 4;
+        const til::size fontSize{ 9, 21 };
+        const auto pixelPosition{ (til::point{ 5, 5 } * fontSize).to_core_point() };
+        const auto noModifiers = ControlKeyStates();
+        const auto shift = ControlKeyStates(ControlKeyStates::ShiftPressed);
+        const Core::Point touchStart{ 45, 100 };
+        const auto touchAt = [&](const int pixels) {
+            return Core::Point{ touchStart.X, touchStart.Y + pixels };
+        };
+        const auto rows = [&](const int count) {
+            return touchAt(count * rowHeight);
+        };
+
+        interactivity->TouchPressed(touchStart);
+
+        Log::Comment(L"Drag down three rows, one row at a time: one notch of wheel-up");
+        interactivity->TouchMoved(rows(1), noModifiers, pixelPosition);
+        interactivity->TouchMoved(rows(2), noModifiers, pixelPosition);
+        VERIFY_ARE_EQUAL(0u, expectedOutput.size());
+        expectedOutput.push_back(L"\x1b[M`&&");
+        interactivity->TouchMoved(rows(3), noModifiers, pixelPosition);
+        VERIFY_ARE_EQUAL(0u, expectedOutput.size(), L"Validate we drained all the expected output");
+
+        Log::Comment(L"Drag back up three rows: one notch of wheel-down");
+        expectedOutput.push_back(L"\x1b[Ma&&");
+        interactivity->TouchMoved(rows(0), noModifiers, pixelPosition);
+        VERIFY_ARE_EQUAL(0u, expectedOutput.size(), L"Validate we drained all the expected output");
+
+        Log::Comment(L"Drag down in steps of three quarters of a row: the fractions add up to a notch on the fourth step");
+        interactivity->TouchMoved(touchAt(step), noModifiers, pixelPosition);
+        interactivity->TouchMoved(touchAt(2 * step), noModifiers, pixelPosition);
+        interactivity->TouchMoved(touchAt(3 * step), noModifiers, pixelPosition);
+        VERIFY_ARE_EQUAL(0u, expectedOutput.size());
+        expectedOutput.push_back(L"\x1b[M`&&");
+        interactivity->TouchMoved(touchAt(4 * step), noModifiers, pixelPosition);
+        VERIFY_ARE_EQUAL(0u, expectedOutput.size(), L"Validate we drained all the expected output");
+        interactivity->TouchReleased();
+
+        Log::Comment(L"One quick move of six rows: two notches");
+        interactivity->TouchPressed(touchStart);
+        expectedOutput.push_back(L"\x1b[M`&&");
+        expectedOutput.push_back(L"\x1b[M`&&");
+        interactivity->TouchMoved(rows(6), noModifiers, pixelPosition);
+        VERIFY_ARE_EQUAL(0u, expectedOutput.size(), L"Validate we drained all the expected output");
+        interactivity->TouchReleased();
+        VERIFY_ARE_EQUAL(21, core->ScrollOffset(), L"The scrollback didn't move");
+
+        Log::Comment(L"With Shift held, the drag pans our scrollback instead");
+        interactivity->TouchPressed(touchStart);
+        interactivity->TouchMoved(rows(3), shift, pixelPosition);
+        interactivity->TouchReleased();
+        VERIFY_ARE_EQUAL(18, core->ScrollOffset());
+
+        Log::Comment(L"Read-only mode: the drag pans our scrollback and sends nothing");
+        core->SetReadOnlyMode(true);
+        interactivity->TouchPressed(touchStart);
+        interactivity->TouchMoved(rows(-3), noModifiers, pixelPosition);
+        interactivity->TouchReleased();
+        VERIFY_ARE_EQUAL(21, core->ScrollOffset());
+        core->SetReadOnlyMode(false);
+
+        Log::Comment(L"Disable mouse mode: the drag pans our scrollback and sends nothing");
+        term.Write(L"\x1b[?1000l");
+        interactivity->TouchPressed(touchStart);
+        interactivity->TouchMoved(rows(3), noModifiers, pixelPosition);
+        interactivity->TouchReleased();
+        VERIFY_ARE_EQUAL(18, core->ScrollOffset());
+
+        Log::Comment(L"Page scrolling in Windows: three rows still make one notch");
+        interactivity->UpdateScrollbar(21);
+        term.Write(L"\x1b[?1000h");
+        interactivity->_rowsToScroll = WHEEL_PAGESCROLL;
+        interactivity->TouchPressed(touchStart);
+        expectedOutput.push_back(L"\x1b[M`&&");
+        interactivity->TouchMoved(rows(3), noModifiers, pixelPosition);
+        VERIFY_ARE_EQUAL(0u, expectedOutput.size(), L"Validate we drained all the expected output");
+        interactivity->TouchReleased();
+    }
+
+    void ControlInteractivityTests::TouchScrollWithAlternateScroll()
+    {
+        // GH#19039: with alternate scroll on (less, man), every row dragged
+        // is one notch, which the app gets as one arrow key.
+        WEX::TestExecution::DisableVerifyExceptions disableVerifyExceptions{};
+
+        auto [settings, conn] = _createSettingsAndConnection();
+        auto [core, interactivity] = _createCoreAndInteractivity(*settings, *conn);
+        _standardInit(core, interactivity);
+        interactivity->GotFocus();
+        interactivity->_rowsToScroll = 3;
+
+        std::deque<std::wstring> expectedOutput{};
+        auto validateDrained = _addInputCallback(conn, expectedOutput);
+
+        Log::Comment(L"Switch to the alternate buffer with alternate scroll on");
+        auto& term{ *core->_terminal };
+        term.Write(L"\x1b[?1049h\x1b[?1007h");
+
+        const auto rowHeight = static_cast<int>(lroundf(core->FontSizeInDips().Height));
+        const auto pixelPosition{ (til::point{ 5, 5 } * til::size{ 9, 21 }).to_core_point() };
+        const auto noModifiers = ControlKeyStates();
+        const Core::Point touchStart{ 45, 100 };
+        const auto touchAt = [&](const int pixels) {
+            return Core::Point{ touchStart.X, touchStart.Y + pixels };
+        };
+        const auto rows = [&](const int count) {
+            return touchAt(count * rowHeight);
+        };
+
+        interactivity->TouchPressed(touchStart);
+
+        Log::Comment(L"Drag down one row: one up arrow");
+        expectedOutput.push_back(L"\x1b[A");
+        interactivity->TouchMoved(rows(1), noModifiers, pixelPosition);
+        VERIFY_ARE_EQUAL(0u, expectedOutput.size(), L"Validate we drained all the expected output");
+
+        Log::Comment(L"Drag up two rows at once: two down arrows");
+        expectedOutput.push_back(L"\x1b[B");
+        expectedOutput.push_back(L"\x1b[B");
+        interactivity->TouchMoved(rows(-1), noModifiers, pixelPosition);
+        VERIFY_ARE_EQUAL(0u, expectedOutput.size(), L"Validate we drained all the expected output");
+
+        interactivity->TouchReleased();
     }
 }

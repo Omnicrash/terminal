@@ -2035,7 +2035,9 @@ namespace winrt::Microsoft::Terminal::Control::implementation
             const auto contactRect = point.Properties().ContactRect();
             til::point newTouchPoint{ til::math::rounding, contactRect.X, contactRect.Y };
 
-            _interactivity->TouchMoved(newTouchPoint.to_core_point());
+            _interactivity->TouchMoved(newTouchPoint.to_core_point(),
+                                       ControlKeyStates(args.KeyModifiers()),
+                                       pixelPosition);
         }
 
         args.Handled(true);

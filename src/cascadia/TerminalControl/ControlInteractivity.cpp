@@ -388,6 +388,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
     void ControlInteractivity::TouchPressed(const Core::Point contactPoint)
     {
         _touchAnchor = contactPoint;
+        _touchWheelNotches = 0;
     }
 
     bool ControlInteractivity::PointerMoved(const uint32_t pointerId,
@@ -487,7 +488,9 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         return handledCompletely;
     }
 
-    void ControlInteractivity::TouchMoved(const Core::Point newTouchPoint)
+    void ControlInteractivity::TouchMoved(const Core::Point newTouchPoint,
+                                          const ::Microsoft::Terminal::Core::ControlKeyStates modifiers,
+                                          const Core::Point pixelPosition)
     {
         if (_focused &&
             _touchAnchor)
@@ -504,6 +507,21 @@ namespace winrt::Microsoft::Terminal::Control::implementation
             // Start viewport scroll after we've moved more than a half row of text
             if (std::abs(dy) > (fontSizeInDips.Height / 2.0f))
             {
+                // GH#19039: If the client app wants mouse input (tmux, vim, ...)
+                // or alternate scroll is on, hand the drag to it as mouse wheel
+                // input instead of panning our scrollback. Like the wheel, Shift
+                // skips the app and pans the scrollback.
+                if (!_core->IsInReadOnlyMode())
+                {
+                    const auto mouseMode = _canSendVTMouseInput(modifiers);
+                    if (mouseMode || _shouldSendAlternateScroll(modifiers, { 0, dy > 0 ? 1 : -1 }))
+                    {
+                        _touchWheelToClient(dy / fontSizeInDips.Height, mouseMode, pixelPosition);
+                        _touchAnchor = newTouchPoint;
+                        return;
+                    }
+                }
+
                 // Multiply by -1, because moving the touch point down will
                 // create a positive delta, but we want the viewport to move up,
                 // so we'll need a negative scroll amount (and the inverse for
@@ -563,6 +581,36 @@ namespace winrt::Microsoft::Terminal::Control::implementation
 
         _singleClickTouchdownPos = std::nullopt;
         _tryStopAutoScroll(pointerId);
+    }
+
+    // Method Description:
+    // - Sends a touch drag to the client app as whole mouse wheel notches,
+    //   carrying the leftover fraction over to the next move.
+    // - In mouse mode the app decides how far a notch scrolls, so dragging
+    //   as many rows as the system scrolls per notch counts as one. With
+    //   alternate scroll a notch is one arrow key, so one row is one notch.
+    // Arguments:
+    // - rows: how many rows the finger moved, positive when dragging down
+    // - mouseMode: whether the app is tracking the mouse
+    // - pixelPosition: where the finger is, relative to the terminal origin
+    void ControlInteractivity::_touchWheelToClient(const float rows,
+                                                   const bool mouseMode,
+                                                   const Core::Point pixelPosition)
+    {
+        // A page per notch makes no sense for a drag; use the Windows default.
+        const auto systemRowsPerNotch = _rowsToScroll == WHEEL_PAGESCROLL ? 3u : std::max(1u, _rowsToScroll);
+        const auto rowsPerNotch = mouseMode ? static_cast<float>(systemRowsPerNotch) : 1.0f;
+
+        _touchWheelNotches += rows / rowsPerNotch;
+        const auto notches = static_cast<int>(_touchWheelNotches);
+        _touchWheelNotches -= notches;
+
+        const auto terminalPosition = _getTerminalPosition(til::point{ pixelPosition }, false);
+        const short delta = notches > 0 ? WHEEL_DELTA : -WHEEL_DELTA;
+        for (auto i = 0; i < std::abs(notches); i++)
+        {
+            _sendMouseEventHelper(terminalPosition, WM_MOUSEWHEEL, {}, delta, {});
+        }
     }
 
     void ControlInteractivity::TouchReleased()
