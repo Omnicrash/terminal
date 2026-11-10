@@ -1167,6 +1167,13 @@ void BackendD3D::_drawText(RenderingPayload& p)
                     dx = 2;
                 }
 
+                // With centerWideGlyphs, a color glyph is fitted to its cells, so the same glyph in a single
+                // cell (text-style ✳) and in two (✳️) are different atlas entries. Glyph indices are 16 bits.
+                if (fontFace && p.s->font->centerWideGlyphs && row->glyphAdvances[x] < p.s->font->cellSize.x * 1.5f)
+                {
+                    glyphIndex |= SINGLE_CELL_GLYPH;
+                }
+
                 auto glyphEntry = glyphs.lookup(glyphIndex);
                 if (!glyphEntry)
                 {
@@ -1322,6 +1329,51 @@ void BackendD3D::_drawTextOverlapSplit(const RenderingPayload& p, u16 y)
             lastFg = fg;
         }
     }
+}
+
+// How far the letters of the primary font sit from the middle of their cell, in pixels (negative: left of it).
+// Many fonts leave their spare space on one side, so an Emoji in the exact middle of its cells still looks
+// off-center next to the letters around it. Measured on "n", a letter with a plain, symmetric shape.
+f32 BackendD3D::_textInkCenterOffset(const RenderingPayload& p) noexcept
+try
+{
+    const auto& font = *p.s->font;
+    const auto name = std::wstring{ std::wstring_view{ font.fontName }.substr(0, font.fontName.find(L',')) };
+
+    UINT32 familyIndex = 0;
+    BOOL exists = FALSE;
+    if (!font.fontCollection || FAILED(font.fontCollection->FindFamilyName(name.c_str(), &familyIndex, &exists)) || !exists)
+    {
+        return 0;
+    }
+
+    wil::com_ptr<IDWriteFontFamily> family;
+    wil::com_ptr<IDWriteFont> primary;
+    wil::com_ptr<IDWriteFontFace> face;
+    THROW_IF_FAILED(font.fontCollection->GetFontFamily(familyIndex, family.addressof()));
+    THROW_IF_FAILED(family->GetFirstMatchingFont(DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STRETCH_NORMAL, DWRITE_FONT_STYLE_NORMAL, primary.addressof()));
+    THROW_IF_FAILED(primary->CreateFontFace(face.addressof()));
+
+    const UINT32 codepoint = L'n';
+    UINT16 glyph = 0;
+    DWRITE_FONT_METRICS metrics{};
+    DWRITE_GLYPH_METRICS glyphMetrics{};
+    THROW_IF_FAILED(face->GetGlyphIndicesW(&codepoint, 1, &glyph));
+    face->GetMetrics(&metrics);
+    THROW_IF_FAILED(face->GetDesignGlyphMetrics(&glyph, 1, &glyphMetrics, FALSE));
+    if (!glyph || !metrics.designUnitsPerEm)
+    {
+        return 0;
+    }
+
+    const auto scale = font.fontSize / metrics.designUnitsPerEm;
+    const auto inkLeft = glyphMetrics.leftSideBearing * scale;
+    const auto inkRight = (static_cast<INT32>(glyphMetrics.advanceWidth) - glyphMetrics.rightSideBearing) * scale;
+    return (inkLeft + inkRight) / 2.0f - font.cellSize.x / 2.0f;
+}
+catch (...)
+{
+    return 0;
 }
 
 BackendD3D::AtlasGlyphEntry* BackendD3D::_drawGlyph(const RenderingPayload& p, const ShapedRow& row, AtlasFontFaceEntry& fontFaceEntry, u32 glyphIndex)
@@ -1514,27 +1566,71 @@ BackendD3D::AtlasGlyphEntry* BackendD3D::_drawGlyph(const RenderingPayload& p, c
         return _drawGlyphAllocateEntry(row, fontFaceEntry, glyphIndex);
     }
 
+    // With centerWideGlyphs, an Emoji is shrunk to fit its cells and the line height, then centered in them.
+    // The glyph is drawn at a fraction of a pixel where needed, so it sits in the exact middle.
+    // A wide one's advance was already centered in its cells by AtlasEngine, so its ink gets centered on
+    // that advance; one that only gets a single cell (text-style, like ✳ without VS16) is centered on that cell.
+    f32 fitScale = 1.0f;
+    std::optional<til::point> fitOffset;
+    D2D1_POINT_2F fitFraction{};
+    if (isColorGlyph && !scale && p.s->font->centerWideGlyphs)
+    {
+        DWRITE_FONT_METRICS metrics{};
+        fontFaceEntry.fontFace->GetMetrics(&metrics);
+        DWRITE_GLYPH_METRICS glyphMetrics{};
+        if (metrics.designUnitsPerEm && SUCCEEDED(fontFaceEntry.fontFace->GetDesignGlyphMetrics(&glyphIndexU16, 1, &glyphMetrics, FALSE)))
+        {
+            const auto advance = glyphMetrics.advanceWidth * glyphRun.fontEmSize / metrics.designUnitsPerEm;
+            const auto cellW = static_cast<f32>(p.s->font->cellSize.x);
+            const auto cellH = static_cast<f32>(p.s->font->cellSize.y);
+            const auto singleCell = (glyphIndex & SINGLE_CELL_GLYPH) != 0;
+            const auto inkW = bounds.right - bounds.left;
+            const auto inkH = bounds.bottom - bounds.top;
+            if (advance > cellW * 1.5f)
+            {
+                fitScale = std::min({ 1.0f, (singleCell ? 1.0f : 2.0f) * cellW / inkW, cellH / inkH });
+                bounds = { bounds.left * fitScale, bounds.top * fitScale, bounds.right * fitScale, bounds.bottom * fitScale };
+                // Letters sit above the baseline and only their descenders go below, so a glyph centered
+                // in the whole cell looks low next to them: center it above half the descender space instead.
+                const auto baseline = static_cast<f32>(p.s->font->baseline);
+                const auto textH = baseline + (cellH - baseline) / 2.0f;
+                const auto left = (singleCell ? cellW : advance) / 2.0f - inkW * fitScale / 2.0f + _textInkCenterOffset(p);
+                const auto top = (textH - inkH * fitScale) / 2.0f - baseline;
+                fitOffset = til::point{ static_cast<til::CoordType>(floorf(left)), static_cast<til::CoordType>(floorf(top)) };
+                fitFraction = { left - floorf(left), top - floorf(top) };
+            }
+        }
+    }
+
     const auto bl = lrintf(bounds.left);
     const auto bt = lrintf(bounds.top);
     const auto br = lrintf(bounds.right);
     const auto bb = lrintf(bounds.bottom);
 
+    // A fitted glyph is drawn at its exact ink position plus the fraction, so it needs one more pixel each way.
     stbrp_rect rect{
-        .w = br - bl,
-        .h = bb - bt,
+        .w = fitOffset ? static_cast<int>(ceilf(fitFraction.x + bounds.right - bounds.left)) : br - bl,
+        .h = fitOffset ? static_cast<int>(ceilf(fitFraction.y + bounds.bottom - bounds.top)) : bb - bt,
     };
     _drawGlyphAtlasAllocate(p, rect);
     _d2dBeginDrawing();
 
-    const D2D1_POINT_2F baselineOrigin{
-        static_cast<f32>(rect.x - bl),
-        static_cast<f32>(rect.y - bt),
-    };
+    const D2D1_POINT_2F baselineOrigin = fitOffset ?
+        D2D1_POINT_2F{ rect.x + fitFraction.x - bounds.left, rect.y + fitFraction.y - bounds.top } :
+        D2D1_POINT_2F{ static_cast<f32>(rect.x - bl), static_cast<f32>(rect.y - bt) };
 
     if (scale)
     {
         transform.dx = (1.0f - transform.m11) * baselineOrigin.x;
         transform.dy = (1.0f - transform.m22) * baselineOrigin.y;
+        _d2dRenderTarget->SetTransform(&transform);
+    }
+    else if (fitScale != 1.0f)
+    {
+        transform.m11 = fitScale;
+        transform.m22 = fitScale;
+        transform.dx = (1.0f - fitScale) * baselineOrigin.x;
+        transform.dy = (1.0f - fitScale) * baselineOrigin.y;
         _d2dRenderTarget->SetTransform(&transform);
     }
 
@@ -1564,8 +1660,8 @@ BackendD3D::AtlasGlyphEntry* BackendD3D::_drawGlyph(const RenderingPayload& p, c
     const auto glyphEntry = _drawGlyphAllocateEntry(row, fontFaceEntry, glyphIndex);
     glyphEntry->shadingType = isColorGlyph ? ShadingType::TextPassthrough : _textShadingType;
     glyphEntry->overlapSplit = overlapSplit;
-    glyphEntry->offset.x = bl;
-    glyphEntry->offset.y = bt;
+    glyphEntry->offset.x = fitOffset ? fitOffset->x : bl;
+    glyphEntry->offset.y = fitOffset ? fitOffset->y : bt;
     glyphEntry->size.x = rect.w;
     glyphEntry->size.y = rect.h;
     glyphEntry->texcoord.x = rect.x;

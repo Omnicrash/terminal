@@ -1050,6 +1050,14 @@
     <value>When enabled, Emoji are displayed in full color.</value>
     <comment>A longer description of the "Profile_EnableColorGlyphs" toggle.</comment>
   </data>
+  <data name="Profile_CenterWideGlyphs.Header" xml:space="preserve">
+    <value>Center wide characters</value>
+    <comment>The main label of a toggle. When enabled, characters that take two cells (like emoji) are centered in them.</comment>
+  </data>
+  <data name="Profile_CenterWideGlyphs.Description" xml:space="preserve">
+    <value>When enabled, characters that take two cells, like Emoji, are centered in them instead of starting at the left. Helps with narrow fonts.</value>
+    <comment>A longer description of the "Profile_CenterWideGlyphs" toggle.</comment>
+  </data>
   <data name="Profile_FontWeightComboBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Font weight</value>
     <comment>Name for a control to select the weight (i.e. bold, thin, etc.) of the text in the app.</comment>

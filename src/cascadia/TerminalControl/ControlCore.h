@@ -406,6 +406,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         FontInfo _actualFont;
         bool _builtinGlyphs = true;
         bool _colorGlyphs = true;
+        bool _centerWideGlyphs = false;
         CSSLengthPercentage _cellWidth;
         CSSLengthPercentage _cellHeight;
         float _accumulatedFontSizeDelta = 0.f; // Preserved across reloads to prevent user zoom from being overwritten.

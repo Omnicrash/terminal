@@ -119,7 +119,7 @@ namespace Microsoft::Console::Render::Atlas
                 return entry.occupied != 0;
             }
 
-            static constexpr size_t hash(const u16 glyphIndex) noexcept
+            static constexpr size_t hash(const u32 glyphIndex) noexcept
             {
                 return til::flat_set_hash_integer(glyphIndex);
             }
@@ -129,12 +129,12 @@ namespace Microsoft::Console::Render::Atlas
                 return til::flat_set_hash_integer(entry.glyphIndex);
             }
 
-            static constexpr bool equals(const AtlasGlyphEntry& entry, u16 glyphIndex) noexcept
+            static constexpr bool equals(const AtlasGlyphEntry& entry, u32 glyphIndex) noexcept
             {
                 return entry.glyphIndex == glyphIndex;
             }
 
-            static constexpr void assign(AtlasGlyphEntry& entry, u16 glyphIndex) noexcept
+            static constexpr void assign(AtlasGlyphEntry& entry, u32 glyphIndex) noexcept
             {
                 entry.glyphIndex = glyphIndex;
                 entry.occupied = 1;
@@ -249,6 +249,9 @@ namespace Microsoft::Console::Render::Atlas
         void _uploadBackgroundBitmap(const RenderingPayload& p);
         void _drawText(RenderingPayload& p);
         ATLAS_ATTR_COLD void _drawTextOverlapSplit(const RenderingPayload& p, u16 y);
+        // Marks a glyph index that only gets a single cell (see centerWideGlyphs); real glyph indices are 16 bits.
+        static constexpr u32 SINGLE_CELL_GLYPH = 0x10000;
+        [[nodiscard]] ATLAS_ATTR_COLD static f32 _textInkCenterOffset(const RenderingPayload& p) noexcept;
         [[nodiscard]] ATLAS_ATTR_COLD AtlasGlyphEntry* _drawGlyph(const RenderingPayload& p, const ShapedRow& row, AtlasFontFaceEntry& fontFaceEntry, u32 glyphIndex);
         AtlasGlyphEntry* _drawBuiltinGlyph(const RenderingPayload& p, const ShapedRow& row, AtlasFontFaceEntry& fontFaceEntry, u32 glyphIndex);
         ShadingType _drawSoftFontGlyph(const RenderingPayload& p, const D2D1_RECT_F& rect, u32 glyphIndex);

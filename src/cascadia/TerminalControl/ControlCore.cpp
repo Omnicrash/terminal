@@ -959,6 +959,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
 
             _builtinGlyphs = _settings.EnableBuiltinGlyphs();
             _colorGlyphs = _settings.EnableColorGlyphs();
+            _centerWideGlyphs = _settings.CenterWideGlyphs();
             _cellWidth = CSSLengthPercentage::FromString(_settings.CellWidth().c_str());
             _cellHeight = CSSLengthPercentage::FromString(_settings.CellHeight().c_str());
             _desiredFont.SetFaceName(std::wstring{ std::wstring_view{ _settings.FontFace() } });
@@ -968,6 +969,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
             _desiredFont.SetCellHeight(_cellHeight);
             _desiredFont.SetEnableBuiltinGlyphs(_builtinGlyphs);
             _desiredFont.SetEnableColorGlyphs(_colorGlyphs);
+            _desiredFont.SetCenterWideGlyphs(_centerWideGlyphs);
             _runtimeOpacity = std::nullopt;
             _runtimeFocusedOpacity = std::nullopt;
 

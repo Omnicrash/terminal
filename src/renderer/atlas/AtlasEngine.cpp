@@ -877,6 +877,23 @@ void AtlasEngine::_flushBufferLine()
     }
 }
 
+// For centerWideGlyphs: the first code unit of a cell gets the cell's whole width and any later ones in the
+// same cell (a VS16 after ✳) get none, so a wide character is measured and centered over all its cells.
+// The default leaves the width on whichever code unit comes last, which renders the same but hides the span.
+static u16 wholeCellEnd(const std::vector<u16>& columns, size_t at, size_t end, u16 col2) noexcept
+{
+    const auto col1 = columns[at];
+    if (at > 0 && columns[at - 1] == col1)
+    {
+        return col1;
+    }
+    for (auto k = at + 1; col2 == col1 && k < end; ++k)
+    {
+        col2 = columns[k + 1];
+    }
+    return col2;
+}
+
 void AtlasEngine::_mapRegularText(size_t offBeg, size_t offEnd)
 {
     auto& row = *_p.rows[_api.lastPaintBufferLineCoord.y];
@@ -925,12 +942,30 @@ void AtlasEngine::_mapRegularText(size_t offBeg, size_t offEnd)
                     for (size_t i = 0; i < complexityLength; ++i)
                     {
                         const auto col1 = _api.bufferLineColumn[idx + i + 0];
-                        const auto col2 = _api.bufferLineColumn[idx + i + 1];
+                        auto col2 = _api.bufferLineColumn[idx + i + 1];
+                        if (_p.s->font->centerWideGlyphs)
+                        {
+                            col2 = wholeCellEnd(_api.bufferLineColumn, idx + i, offEnd, col2);
+                        }
                         const auto glyphAdvance = (col2 - col1) * _p.s->font->cellSize.x;
                         const auto fg = colors[static_cast<size_t>(col1) << shift];
+                        DWRITE_GLYPH_OFFSET glyphOffset{};
+                        // Simple text gets no glyph metrics, so a wide character (an Emoji) is measured here
+                        // and, if wanted, centered in its cells instead of starting at their left edge.
+                        if (_p.s->font->centerWideGlyphs && col2 - col1 > 1)
+                        {
+                            DWRITE_FONT_METRICS metrics{};
+                            mappedFontFace->GetMetrics(&metrics);
+                            INT32 designAdvance = 0;
+                            if (metrics.designUnitsPerEm && SUCCEEDED(mappedFontFace->GetDesignGlyphAdvances(1, &_api.glyphIndices[i], &designAdvance, FALSE)))
+                            {
+                                const auto actualAdvance = designAdvance * _p.s->font->fontSize / metrics.designUnitsPerEm;
+                                glyphOffset.advanceOffset = (glyphAdvance - actualAdvance) / 2;
+                            }
+                        }
                         row.glyphIndices.emplace_back(_api.glyphIndices[i]);
                         row.glyphAdvances.emplace_back(static_cast<f32>(glyphAdvance));
-                        row.glyphOffsets.emplace_back();
+                        row.glyphOffsets.emplace_back(glyphOffset);
                         row.colors.emplace_back(fg);
                     }
                 }
@@ -1161,7 +1196,11 @@ void AtlasEngine::_mapComplex(IDWriteFontFace2* mappedFontFace, u32 idx, u32 len
             }
 
             const size_t col1 = _api.bufferLineColumn[a.textPosition + beg];
-            const size_t col2 = _api.bufferLineColumn[a.textPosition + i];
+            size_t col2 = _api.bufferLineColumn[a.textPosition + i];
+            if (_p.s->font->centerWideGlyphs)
+            {
+                col2 = wholeCellEnd(_api.bufferLineColumn, a.textPosition + beg, _api.bufferLineColumn.size() - 1, static_cast<u16>(col2));
+            }
             const auto fg = colors[col1 << shift];
 
             const auto expectedAdvance = (col2 - col1) * _p.s->font->cellSize.x;
@@ -1170,7 +1209,32 @@ void AtlasEngine::_mapComplex(IDWriteFontFace2* mappedFontFace, u32 idx, u32 len
             {
                 actualAdvance += _api.glyphAdvances[j];
             }
-            _api.glyphAdvances[nextCluster - 1] += expectedAdvance - actualAdvance;
+            // A character wider than one cell (an Emoji) starts at the left edge of its cells.
+            // Optionally center it: right by half the leftover space, or left by half the overhang.
+            if (_p.s->font->centerWideGlyphs && col2 - col1 > 1)
+            {
+                const auto shiftX = (expectedAdvance - actualAdvance) / 2;
+                for (auto j = prevCluster; j < nextCluster; ++j)
+                {
+                    _api.glyphOffsets[j].advanceOffset += shiftX;
+                }
+            }
+            // The leftover space normally goes on the cluster's last glyph. For centerWideGlyphs it goes on
+            // the first one instead (later glyphs keep their place), so the renderer can tell from the first
+            // glyph's advance how many cells the cluster has, as with ✳️ (✳ and an empty VS16 glyph).
+            if (_p.s->font->centerWideGlyphs && nextCluster - prevCluster > 1)
+            {
+                const auto extra = expectedAdvance - actualAdvance;
+                _api.glyphAdvances[prevCluster] += extra;
+                for (auto j = prevCluster + 1; j < nextCluster; ++j)
+                {
+                    _api.glyphOffsets[j].advanceOffset -= extra;
+                }
+            }
+            else
+            {
+                _api.glyphAdvances[nextCluster - 1] += expectedAdvance - actualAdvance;
+            }
 
             row.colors.insert(row.colors.end(), nextCluster - prevCluster, fg);
 

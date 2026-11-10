@@ -316,6 +316,7 @@ namespace winrt::Microsoft::Terminal::Settings
         _FontAxes = fontInfo.FontAxes();
         _EnableBuiltinGlyphs = fontInfo.EnableBuiltinGlyphs();
         _EnableColorGlyphs = fontInfo.EnableColorGlyphs();
+        _CenterWideGlyphs = fontInfo.CenterWideGlyphs();
         _CellWidth = fontInfo.CellWidth();
         _CellHeight = fontInfo.CellHeight();
         _Padding = profile.Padding();

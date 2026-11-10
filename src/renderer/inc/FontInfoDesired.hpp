@@ -28,12 +28,14 @@ struct FontInfoDesired : FontInfoBase
     float GetFontSizeInPt() const noexcept;
     bool GetEnableBuiltinGlyphs() const noexcept;
     bool GetEnableColorGlyphs() const noexcept;
+    bool GetCenterWideGlyphs() const noexcept;
 
     void SetCellWidth(CSSLengthPercentage cellWidth) noexcept;
     void SetCellHeight(CSSLengthPercentage cellHeight) noexcept;
     void SetFontSizeInPt(float fontSizeInPt) noexcept;
     void SetEnableBuiltinGlyphs(bool builtinGlyphs) noexcept;
     void SetEnableColorGlyphs(bool colorGlyphs) noexcept;
+    void SetCenterWideGlyphs(bool centerWideGlyphs) noexcept;
 
     til::size GetPixelCellSize() const noexcept;
     void SetPixelCellSize(til::size size) noexcept;
@@ -46,4 +48,5 @@ private:
     float _fontSizeInPt = 0;
     bool _builtinGlyphs = false;
     bool _colorGlyphs = true;
+    bool _centerWideGlyphs = false;
 };

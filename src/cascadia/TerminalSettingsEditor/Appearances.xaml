@@ -548,6 +548,20 @@
                 </StackPanel>
             </local:SettingsCard>
 
+            <!--  Center Wide Glyphs  -->
+            <local:SettingsCard x:Name="CenterWideGlyphs"
+                                x:Uid="Profile_CenterWideGlyphs"
+                                Margin="0,4,0,0"
+                                Style="{StaticResource ExpanderAlignedSettingsCardStyle}">
+                <StackPanel Style="{StaticResource SettingControlStackStyle}">
+                    <ToggleSwitch VerticalAlignment="Center"
+                                  IsOn="{x:Bind Appearance.CenterWideGlyphs, Mode=TwoWay}"
+                                  Style="{StaticResource ToggleSwitchInExpanderStyle}" />
+                    <local:SettingResetButton SettingName="CenterWideGlyphs"
+                                              Target="{x:Bind Appearance}" />
+                </StackPanel>
+            </local:SettingsCard>
+
             <!--  Retro Terminal Effect  -->
             <local:SettingsCard x:Name="RetroTerminalEffect"
                                 x:Uid="Profile_RetroTerminalEffect"

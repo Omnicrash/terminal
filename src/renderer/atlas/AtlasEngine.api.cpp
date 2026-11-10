@@ -906,6 +906,7 @@ void AtlasEngine::_resolveFontMetrics(const FontInfoDesired& fontInfoDesired, Fo
 
         fontMetrics->builtinGlyphs = fontInfoDesired.GetEnableBuiltinGlyphs();
         fontMetrics->colorGlyphs = fontInfoDesired.GetEnableColorGlyphs();
+        fontMetrics->centerWideGlyphs = fontInfoDesired.GetCenterWideGlyphs();
     }
 }
 

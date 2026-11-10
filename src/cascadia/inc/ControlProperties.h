@@ -73,6 +73,7 @@
     X(IFontAxesMap, FontAxes)                                                                                                                            \
     X(bool, EnableBuiltinGlyphs, true)                                                                                                                   \
     X(bool, EnableColorGlyphs, true)                                                                                                                     \
+    X(bool, CenterWideGlyphs, false)                                                                                                                     \
     X(winrt::hstring, CellWidth)                                                                                                                         \
     X(winrt::hstring, CellHeight)                                                                                                                        \
     X(winrt::hstring, Commandline)                                                                                                                       \

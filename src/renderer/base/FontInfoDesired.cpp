@@ -30,6 +30,11 @@ bool FontInfoDesired::GetEnableColorGlyphs() const noexcept
     return _colorGlyphs;
 }
 
+bool FontInfoDesired::GetCenterWideGlyphs() const noexcept
+{
+    return _centerWideGlyphs;
+}
+
 void FontInfoDesired::SetCellWidth(CSSLengthPercentage cellWidth) noexcept
 {
     _cellWidth = cellWidth;
@@ -53,6 +58,11 @@ void FontInfoDesired::SetEnableBuiltinGlyphs(bool builtinGlyphs) noexcept
 void FontInfoDesired::SetEnableColorGlyphs(bool colorGlyphs) noexcept
 {
     _colorGlyphs = colorGlyphs;
+}
+
+void FontInfoDesired::SetCenterWideGlyphs(bool centerWideGlyphs) noexcept
+{
+    _centerWideGlyphs = centerWideGlyphs;
 }
 
 til::size FontInfoDesired::GetPixelCellSize() const noexcept

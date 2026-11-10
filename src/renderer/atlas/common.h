@@ -376,6 +376,7 @@ namespace Microsoft::Console::Render::Atlas
         AntialiasingMode antialiasingMode = DefaultAntialiasingMode;
         bool builtinGlyphs = false;
         bool colorGlyphs = true;
+        bool centerWideGlyphs = false;
 
         std::vector<uint16_t> softFontPattern;
         til::size softFontCellSize;

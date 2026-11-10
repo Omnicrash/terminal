@@ -391,6 +391,11 @@
           "description": "When set to true, Emoji are displayed in full color. When set to false, they are displayed in the text's foreground color.",
           "type": "boolean"
         },
+        "centerWideGlyphs": {
+          "default": false,
+          "description": "When set to true, characters that take two cells (like Emoji) are centered in them instead of starting at the left edge. Helps with narrow fonts.",
+          "type": "boolean"
+        },
         "cellWidth": {
           "$ref": "#/$defs/CSSLengthPercentage",
           "description": "Override the width of the terminal's cells. The override works similar to CSS' letter-spacing. It defaults to the natural glyph advance width of the primary font rounded to the nearest pixel."

@@ -168,6 +168,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
     PROJECTED(_appearance.SourceProfile().FontInfo(), FontWeight)          \
     PROJECTED(_appearance.SourceProfile().FontInfo(), EnableBuiltinGlyphs) \
     PROJECTED(_appearance.SourceProfile().FontInfo(), EnableColorGlyphs)   \
+    PROJECTED(_appearance.SourceProfile().FontInfo(), CenterWideGlyphs)    \
     CUSTOM(FontAxes)                                                       \
     CUSTOM(FontFeatures)                                                   \
     PROJECTED(_appearance, RetroTerminalEffect)                            \

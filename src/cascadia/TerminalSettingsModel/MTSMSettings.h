@@ -141,6 +141,7 @@ Author(s):
     X(IFontFeatureMap, FontFeatures, "features")                                       \
     X(bool, EnableBuiltinGlyphs, "builtinGlyphs", true)                                \
     X(bool, EnableColorGlyphs, "colorGlyphs", true)                                    \
+    X(bool, CenterWideGlyphs, "centerWideGlyphs", false)                               \
     X(winrt::hstring, CellWidth, "cellWidth")                                          \
     X(winrt::hstring, CellHeight, "cellHeight")
 
